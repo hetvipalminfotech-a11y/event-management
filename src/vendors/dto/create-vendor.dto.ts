@@ -29,6 +29,8 @@
     @Min(1)
     package_price!: number;
 
+
+    
     @Type(() => Number)
     @IsNumber()
     @Min(1)
