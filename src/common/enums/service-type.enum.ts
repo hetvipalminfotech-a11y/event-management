@@ -1,0 +1,8 @@
+export enum ServiceType {
+  CATERING = 'CATERING',
+  DECORATION = 'DECORATION',
+  PHOTOGRAPHY = 'PHOTOGRAPHY',
+  DJ = 'DJ',
+  MAKEUP = 'MAKEUP',
+  VENUE = 'VENUE',
+}
