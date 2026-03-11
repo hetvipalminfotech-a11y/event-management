@@ -11,6 +11,7 @@ import { databaseConfig } from './config/database.config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from './common/guards/role.guard';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { RolesGuard } from './common/guards/role.guard';
       isGlobal: true,
     }),
     TypeOrmModule.forRootAsync(databaseConfig),
-    UsersModule, VendorsModule, EventBookingsModule, VendorAssignmentModule, AuthModule],
+    UsersModule, VendorsModule, EventBookingsModule, VendorAssignmentModule, AuthModule, ReportsModule],
   
   controllers: [AppController],
   providers: [
