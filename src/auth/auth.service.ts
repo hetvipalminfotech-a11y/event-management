@@ -1,5 +1,6 @@
 import {
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -13,6 +14,7 @@ import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ConfigService } from '@nestjs/config';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 
 @Injectable()
 export class AuthService {
@@ -72,56 +74,124 @@ export class AuthService {
     };
 
     const accessToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('JWT_ACCESS_SECRET') ,
-      expiresIn: parseInt(this.configService.get<string>('JWT_ACCESS_EXPIRES')!) , // "1h"
+      secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
+      expiresIn: parseInt(
+        this.configService.get<string>('JWT_ACCESS_EXPIRES')!,
+      ), // "1h"
     });
 
-    const refreshToken = this.jwtService.sign(payload, {
+    // create empty refresh token record first
+    const refresh = await this.refreshRepo.save(
+      this.refreshRepo.create({
+        token_hash: '',
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        user,
+      }),
+    );
+
+    // add tokenId to payload
+    const refreshPayload: JwtPayload = {
+      sub: user.id.toString(),
+      role: user.role,
+      tokenId: refresh.id,
+    };
+
+    // generate refresh token
+    const refreshToken = this.jwtService.sign(refreshPayload, {
       secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      expiresIn:parseInt(this.configService.get<string>('JWT_REFRESH_EXPIRES')!), // "7d"
+      expiresIn: parseInt(
+        this.configService.get<string>('JWT_REFRESH_EXPIRES')!,
+      ),
     });
 
+    // hash refresh token
     const tokenHash = await bcrypt.hash(refreshToken, 10);
-    const refresh = this.refreshRepo.create({
-      token_hash: tokenHash,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      user,
-    });
+
+    // update record with hash
+    refresh.token_hash = tokenHash;
     await this.refreshRepo.save(refresh);
 
     return { accessToken, refreshToken };
   }
 
   // REFRESH TOKEN
-  async refreshToken(token: string) {
-    const payload = this.jwtService.verify<JwtPayload>(token, {
+  async refreshToken(dto: RefreshTokenDto) {
+    const payload = this.jwtService.verify<JwtPayload>(dto.refreshToken, {
       secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
     });
 
-    // Convert sub back to number for DB
-    const userId = parseInt(payload.sub, 10);
+    if (!payload.tokenId) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
 
-    const tokens = await this.refreshRepo.find({
-      where: { user: { id: userId } },
+    const storedToken = await this.refreshRepo.findOne({
+      where: { id: payload.tokenId, status: true },
       relations: ['user'],
     });
 
-    for (const storedToken of tokens) {
-      const match = await bcrypt.compare(token, storedToken.token_hash);
-      if (match) {
-        const newAccess = this.jwtService.sign(payload, {
-          secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
-          expiresIn: parseInt(this.configService.get<string>('JWT_ACCESS_EXPIRES')!),
-        });
-        return { accessToken: newAccess };
-      }
+    if (!storedToken) {
+      throw new UnauthorizedException('Refresh token not found');
     }
-    throw new UnauthorizedException('Invalid refresh token');
+
+    if (storedToken.expiresAt < new Date()) {
+      throw new UnauthorizedException('Refresh token expired');
+    }
+
+    const match = await bcrypt.compare(dto.refreshToken, storedToken.token_hash);
+
+    if (!match) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const newAccess = this.jwtService.sign(
+      {
+        sub: storedToken.user.id.toString(),
+        role: storedToken.user.role,
+      },
+      {
+        secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
+        expiresIn: parseInt(
+          this.configService.get<string>('JWT_ACCESS_EXPIRES')!,
+        ),
+      },
+    );
+
+    return { accessToken: newAccess };
   }
 
   // LOGOUT
-  async logout(userId: number) {
-    await this.refreshRepo.delete({ user: { id: userId } });
-    return { message: 'Logged out successfully' };
+  async logout(dto: RefreshTokenDto) {
+    const payload = this.jwtService.verify<JwtPayload>(dto.refreshToken, {
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+    });
+
+    if (!payload.tokenId) {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    const token = await this.refreshRepo.findOne({
+      where: { id: payload.tokenId, status: true },
+    });
+
+    if (!token) {
+      throw new NotFoundException('Refresh token not found');
+    }
+
+    if (token.expiresAt < new Date()) {
+      throw new UnauthorizedException('Refresh token expired');
+    }
+    const match = await bcrypt.compare(dto.refreshToken, token.token_hash);
+
+    if (!match) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    token.status = false;
+
+    await this.refreshRepo.save(token);
+
+    return {
+      message: 'Logout successful',
+    };
   }
 }

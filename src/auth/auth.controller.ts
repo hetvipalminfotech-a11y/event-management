@@ -4,6 +4,8 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtUser } from './strategies/jwt.strategy';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 export interface RequestWithUser extends Request {
   user: JwtUser; // Now req.user has id and role
 }
@@ -19,16 +21,15 @@ export class AuthController {
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
-
+  
   @Post('refresh')
-  refresh(@Body('refreshToken') token: string) {
-    return this.authService.refreshToken(token);
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refreshToken(dto);
   }
-
+  
   @Post('logout')
-  logout(@Req() req:RequestWithUser) {
-    const user=req.user
-    return this.authService.logout(req.user.id);
+  logout(@Body() dto: RefreshTokenDto) {
+    return this.authService.logout(dto);
   }
 
 }

@@ -16,7 +16,7 @@ export class VendorAvailability {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => Vendor)
+  @ManyToOne(() => Vendor, (vendor) => vendor.vendorAvailabilities)
   @JoinColumn({ name: 'vendor_id' })
   vendor!: Vendor;
 

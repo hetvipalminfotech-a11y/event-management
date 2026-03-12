@@ -27,23 +27,29 @@ export class EventBookingsService {
 
   private dataSource: DataSource,
 ) {}
-  async generateBookingId(): Promise<string> {
-
+ async generateBookingId(): Promise<string> {
   const year = new Date().getFullYear();
 
   const lastBooking = await this.eventbookinRepo
     .createQueryBuilder('booking')
+    .where('booking.booking_id LIKE :pattern', {
+      pattern: `EVENT-${year}-%`,
+    })
     .orderBy('booking.booking_id', 'DESC')
     .getOne();
 
   let nextNumber = 1;
 
-  if (lastBooking) {
-    const lastNumber = parseInt(lastBooking.booking_id.split('-')[2]);
-    nextNumber = lastNumber + 1;
+  if (lastBooking?.booking_id) {
+    const lastSequence = lastBooking.booking_id.split('-').pop();
+    const lastNumber = Number(lastSequence);
+
+    if (!isNaN(lastNumber)) {
+      nextNumber = lastNumber + 1;
+    }
   }
 
-  const formatted = nextNumber.toString().padStart(3, '0');
+  const formatted = String(nextNumber).padStart(3, '0');
 
   return `EVENT-${year}-${formatted}`;
 }

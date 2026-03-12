@@ -12,20 +12,20 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from './common/guards/role.guard';
 import { ReportsModule } from './reports/reports.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { TasksModule } from './task/task.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
+    TasksModule,
     TypeOrmModule.forRootAsync(databaseConfig),
     UsersModule, VendorsModule, EventBookingsModule, VendorAssignmentModule, AuthModule, ReportsModule],
   
   controllers: [AppController],
-  providers: [
-    {
-    provide: APP_GUARD,
-    useClass: RolesGuard,
-    },AppService],
+  providers: [AppService],
 })
 export class AppModule {}

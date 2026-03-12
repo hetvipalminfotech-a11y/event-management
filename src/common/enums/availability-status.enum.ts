@@ -1,4 +1,5 @@
 export enum AvailabilityStatus {
-  AVAILABLE = 'AVAILABLE',
-  BLOCKED = 'BLOCKED',
+  AVAILABLE = 'Available',
+  PARTIALLY_BOOKED = 'Partially Booked',
+  FULLY_BOOKED = 'Fully Booked',
 }

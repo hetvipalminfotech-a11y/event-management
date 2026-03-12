@@ -22,51 +22,56 @@ import { DeliveryStatus } from '../common/enums/delivery-status';
 import { AvailabilityStatus } from '../common/enums/availability-status.enum';
 
 async function seed() {
-
   const app = await NestFactory.createApplicationContext(AppModule);
 
   const userRepo = app.get<Repository<User>>(getRepositoryToken(User));
   const vendorRepo = app.get<Repository<Vendor>>(getRepositoryToken(Vendor));
-  const availabilityRepo = app.get<Repository<VendorAvailability>>(getRepositoryToken(VendorAvailability));
-  const bookingRepo = app.get<Repository<EventBooking>>(getRepositoryToken(EventBooking));
-  const assignmentRepo = app.get<Repository<VendorAssignment>>(getRepositoryToken(VendorAssignment));
+  const availabilityRepo = app.get<Repository<VendorAvailability>>(
+    getRepositoryToken(VendorAvailability),
+  );
+  const bookingRepo = app.get<Repository<EventBooking>>(
+    getRepositoryToken(EventBooking),
+  );
+  const assignmentRepo = app.get<Repository<VendorAssignment>>(
+    getRepositoryToken(VendorAssignment),
+  );
 
   // prevent multiple seed runs
   const userCount = await userRepo.count();
 
-  if(userCount > 0){
-    console.log("Database already seeded");
+  if (userCount > 0) {
+    console.log('Database already seeded');
     process.exit();
   }
 
-  const password = await bcrypt.hash("password123",10);
+  const password = await bcrypt.hash('password123', 10);
 
   /*
   USERS
   */
 
   const admin = userRepo.create({
-    name:"Admin",
-    email:"admin@test.com",
+    name: 'Admin',
+    email: 'admin@test.com',
     password,
-    role:UserRole.ADMIN
+    role: UserRole.ADMIN,
   });
 
   const manager = userRepo.create({
-    name:"Event Manager",
-    email:"manager@test.com",
+    name: 'Event Manager',
+    email: 'manager@test.com',
     password,
-    role:UserRole.EVENT_MANAGER
+    role: UserRole.EVENT_MANAGER,
   });
 
   const vendorUser = userRepo.create({
-    name:"Vendor User",
-    email:"vendor@test.com",
+    name: 'Vendor User',
+    email: 'vendor@test.com',
     password,
-    role:UserRole.VENDOR
+    role: UserRole.VENDOR,
   });
 
-  await userRepo.save([admin,manager,vendorUser]);
+  await userRepo.save([admin, manager, vendorUser]);
 
   /*
   VENDORS
@@ -78,31 +83,30 @@ async function seed() {
     ServiceType.PHOTOGRAPHY,
     ServiceType.DJ,
     ServiceType.MAKEUP,
-    ServiceType.VENUE
+    ServiceType.VENUE,
   ];
+  const year = new Date().getFullYear();
+  const vendors: Vendor[] = [];
 
-  const vendors:Vendor[] = [];
-
-  for(let i=1;i<=10;i++){
-
+  for (let i = 1; i <= 10; i++) {
+    const vendorId = `VEN-${year}-${String(i).padStart(3, '0')}`;
     const vendor = vendorRepo.create({
-
-      vendor_id:`VEN-${100+i}`,
-      vendor_name:`Vendor ${i}`,
-      business_name:`Business ${i}`,
-      contact_number:`987654321${i}`,
-      service_area:"Surat",
+      vendor_id: vendorId,
+      vendor_name: `Vendor ${i}`,
+      business_name: `Business ${i}`,
+      contact_number: `987654321${i}`,
+      service_area: 'Surat',
 
       service_type: serviceTypes[i % serviceTypes.length],
 
-      vendor_cost:10000+i*1000,
-      package_price:15000+i*1500,
+      vendor_cost: 10000 + i * 1000,
+      package_price: 15000 + i * 1500,
 
-      max_events_per_day:3,
-      rating:4.5,
+      max_events_per_day: 3,
+      rating: 4.5,
 
-      vendor_status:VendorStatus.ACTIVE,
-      user:vendorUser
+      vendor_status: VendorStatus.ACTIVE,
+      user: vendorUser,
     });
 
     vendors.push(vendor);
@@ -114,22 +118,20 @@ async function seed() {
   AVAILABILITY
   */
 
-  const availabilities:VendorAvailability[]=[];
+  const availabilities: VendorAvailability[] = [];
 
-  for(let i=0;i<20;i++){
-
+  for (let i = 0; i < 20; i++) {
     const vendor = vendors[i % vendors.length];
 
     const availability = availabilityRepo.create({
-
       vendor,
-      date:new Date(2025,0,(i%28)+1),
+      date: new Date(2026, 0, (i % 28) + 1),
 
-      maximum_capacity:3,
-      booked_count:0,
-      available_slots:3,
+      maximum_capacity: 3,
+      booked_count: 0,
+      available_slots: 3,
 
-      availability_status:AvailabilityStatus.AVAILABLE
+      availability_status: AvailabilityStatus.AVAILABLE,
     });
 
     availabilities.push(availability);
@@ -144,32 +146,31 @@ async function seed() {
   const eventTypes = [
     EventType.WEDDING,
     EventType.BIRTHDAY,
-    EventType.CORPORATE
+    EventType.CORPORATE,
   ];
+  // const year = new Date().getFullYear();
+  const bookings: EventBooking[] = [];
 
-  const bookings:EventBooking[]=[];
-
-  for(let i=1;i<=15;i++){
-
+  for (let i = 1; i <= 15; i++) {
+    const bookingId = `EVENT-${year}-${String(i).padStart(3, '0')}`;
     const booking = bookingRepo.create({
+      booking_id: bookingId,
 
-      booking_id:`EVENT-2025-${100+i}`,
+      customer_name: `Customer ${i}`,
+      customer_phone: `900000000${i}`,
 
-      customer_name:`Customer ${i}`,
-      customer_phone:`900000000${i}`,
+      event_type: eventTypes[i % eventTypes.length],
 
-      event_type:eventTypes[i % eventTypes.length],
+      event_date: new Date(2026, 0, (i % 28) + 1),
 
-      event_date:new Date(2025,0,(i%28)+1),
+      guest_count: 200 + i * 10,
 
-      guest_count:200+i*10,
+      total_cost: 0,
+      total_package: 0,
 
-      total_cost:0,
-      total_package:0,
+      event_status: EventStatus.BOOKED,
 
-      event_status:EventStatus.BOOKED,
-
-      created_by:manager
+      created_by: manager,
     });
 
     bookings.push(booking);
@@ -181,28 +182,29 @@ async function seed() {
   ASSIGNMENTS
   */
 
-  const assignments:VendorAssignment[]=[];
+  const assignments: VendorAssignment[] = [];
 
-  for(let i=0;i<30;i++){
-
+  for (let i = 0; i < 30; i++) {
     const booking = bookings[i % bookings.length];
     const vendor = vendors[i % vendors.length];
 
     const assignment = assignmentRepo.create({
-
-      event_booking:booking,
+      event_booking: booking,
       vendor,
 
-      vendor_cost_snapshot:vendor.vendor_cost,
-      package_price_snapshot:vendor.package_price,
+      vendor_cost_snapshot: vendor.vendor_cost,
+      package_price_snapshot: vendor.package_price,
 
-      assignment_status:AssignmentStatus.ACTIVE,
+      assignment_status: AssignmentStatus.ACTIVE,
 
       delivery_status:
-        i%4===0 ? DeliveryStatus.PENDING :
-        i%4===1 ? DeliveryStatus.ARRANGED :
-        i%4===2 ? DeliveryStatus.DELIVERED :
-        DeliveryStatus.DONE
+        i % 4 === 0
+          ? DeliveryStatus.PENDING
+          : i % 4 === 1
+            ? DeliveryStatus.ARRANGED
+            : i % 4 === 2
+              ? DeliveryStatus.DELIVERED
+              : DeliveryStatus.DONE,
     });
 
     assignments.push(assignment);
@@ -210,7 +212,7 @@ async function seed() {
 
   await assignmentRepo.save(assignments);
 
-  console.log("Seed completed successfully");
+  console.log('Seed completed successfully');
 
   process.exit();
 }
