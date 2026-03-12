@@ -1,90 +1,209 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { CreateVendorAssignmentDto } from './dto/create-vendor-assignment.dto';
-import { UpdateVendorAssignmentDto } from './dto/update-vendor-assignment.dto';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException
+} from '@nestjs/common';
+
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+
 import { VendorAssignment } from './entities/vendor-assignment.entity';
-import { DeliveryStatus } from 'src/common/enums/delivery-status';
-import { EventStatus } from 'src/common/enums/event-status';
-import { EventBooking } from 'src/event-bookings/entities/event-booking.entity';
+import { EventBooking } from '../event-bookings/entities/event-booking.entity';
+
+import { DeliveryStatus } from '../common/enums/delivery-status';
+import { AssignmentStatus } from '../common/enums/assignment-status.enum';
+import { EventStatus } from '../common/enums/event-status';
 
 @Injectable()
-export class VendorAssignmentService {
+export class VendorAssignmentsService {
+
   constructor(
     @InjectRepository(VendorAssignment)
-    private vendorassignmentRepo: Repository<VendorAssignment>,
+    private readonly assignmentRepo: Repository<VendorAssignment>,
 
     @InjectRepository(EventBooking)
-    private eventbookingRepo: Repository<EventBooking>,
+    private readonly bookingRepo: Repository<EventBooking>,
   ) {}
-  async getVendorAssignments(vendorId: string) {
 
-  return this.vendorassignmentRepo.find({
-    where:{
-      vendor:{ vendor_id: vendorId }
-    },
-    relations:['event_booking'],
-    select:{
-      id:true,
-      delivery_status:true,
-      event_booking:{
-        booking_id:true,
-        event_date:true
+  // Vendor sees only their assignments
+  async getVendorAssignments(vendorId: string): Promise<VendorAssignment[]> {
+
+    const assignments = await this.assignmentRepo.find({
+      where: {
+        vendor: { vendor_id: vendorId }
+      },
+      relations: ['event_booking'],
+      select: {
+        id: true,
+        delivery_status: true,
+        assignment_status: true,
+        event_booking: {
+          booking_id: true,
+          event_date: true,
+          event_type: true,
+          guest_count: true
+        }
       }
+    });
+
+    return assignments;
+  }
+
+
+  // Vendor updates delivery status
+  async updateDeliveryStatus(
+    vendorId: string,
+    assignmentId: number,
+    newStatus: DeliveryStatus
+  ): Promise<VendorAssignment> {
+
+    const assignment = await this.assignmentRepo.findOne({
+      where: { id: assignmentId },
+      relations: ['vendor']
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('Assignment not found');
     }
-  });
-}
-async updateDeliveryStatus(
-  vendorId: string,
-  assignmentId: number,
-  status: DeliveryStatus
-){
 
-  const assignment = await this.vendorassignmentRepo.findOne({
-    where:{ id: assignmentId },
-    relations:['vendor']
-  });
-
-  if(!assignment){
-    throw new NotFoundException("Assignment not found");
-  }
-
-  if(assignment.vendor.vendor_id !== vendorId){
-    throw new ForbiddenException(
-      "You can update only your assignments"
-    );
-  }
-
-  assignment.delivery_status = status;
-
-  return this.vendorassignmentRepo.save(assignment);
-}
-async completeEvent(bookingId:string){
-
-  const assignments = await this.vendorassignmentRepo.find({
-    where:{
-      event_booking:{ booking_id: bookingId }
+    // vendor ownership check
+    if (assignment.vendor.vendor_id !== vendorId) {
+      throw new ForbiddenException('You can update only your assignments');
     }
-  });
 
-  const allDone = assignments.every(
-    a => a.delivery_status === DeliveryStatus.DONE
-  );
+    const transitions: Record<DeliveryStatus, DeliveryStatus[]> = {
 
-  if(!allDone){
-    throw new BadRequestException(
-      "All vendors must complete their work first"
-    );
+      [DeliveryStatus.PENDING]: [DeliveryStatus.ARRANGED],
+      [DeliveryStatus.ARRANGED]: [DeliveryStatus.DELIVERED],
+      [DeliveryStatus.DELIVERED]: [DeliveryStatus.DONE],
+      [DeliveryStatus.DONE]:[],
+      [DeliveryStatus.CANCELLED]: []
+
+    };
+
+    const allowed = transitions[assignment.delivery_status];
+
+    if (!allowed.includes(newStatus)) {
+      throw new BadRequestException(
+        `Invalid delivery status transition`
+      );
+    }
+
+    assignment.delivery_status = newStatus;
+
+    return this.assignmentRepo.save(assignment);
   }
 
-  const booking = await this.eventbookingRepo.findOne({
-    where:{ booking_id: bookingId }
-  });
-  if(!booking){
-  throw new NotFoundException("Booking not found");
-}
-  booking.event_status = EventStatus.COMPLETED;
 
-  return this.eventbookingRepo.save(booking);
-}
+  // Admin/Event Manager view assignments for event
+  async getAssignmentsByEvent(
+    bookingId: string
+  ): Promise<VendorAssignment[]> {
+
+    const assignments = await this.assignmentRepo.find({
+      where: {
+        event_booking: { booking_id: bookingId }
+      },
+      relations: ['vendor']
+    });
+
+    if (!assignments.length) {
+      throw new NotFoundException(
+        'No vendor assignments found for this event'
+      );
+    }
+
+    return assignments;
+  }
+
+
+  // Admin/Event Manager view single assignment
+  async getAssignmentById(id: number): Promise<VendorAssignment> {
+
+    const assignment = await this.assignmentRepo.findOne({
+      where: { id },
+      relations: ['vendor', 'event_booking']
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('Assignment not found');
+    }
+
+    return assignment;
+  }
+
+
+  // Cancel vendor assignment
+  async cancelAssignment(id: number): Promise<VendorAssignment> {
+
+    const assignment = await this.assignmentRepo.findOne({
+      where: { id }
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('Assignment not found');
+    }
+
+    assignment.assignment_status = AssignmentStatus.CANCELLED;
+
+    return this.assignmentRepo.save(assignment);
+  }
+
+
+  // Event Manager completes event
+  async completeEvent(bookingId: string): Promise<EventBooking> {
+
+    const assignments = await this.assignmentRepo.find({
+      where: {
+        event_booking: { booking_id: bookingId }
+      }
+    });
+
+    if (!assignments.length) {
+      throw new NotFoundException(
+        'No assignments found for this booking'
+      );
+    }
+
+    const allDone = assignments.every(
+      a => a.delivery_status === DeliveryStatus.DONE
+    );
+
+    if (!allDone) {
+      throw new BadRequestException(
+        'All vendors must complete delivery first'
+      );
+    }
+
+    const booking = await this.bookingRepo.findOne({
+      where: { booking_id: bookingId }
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    booking.event_status = EventStatus.COMPLETED;
+
+    return this.bookingRepo.save(booking);
+  }
+
+
+  // Admin delete assignment
+  async deleteAssignment(id: number): Promise<{ message: string }> {
+
+    const assignment = await this.assignmentRepo.findOne({
+      where: { id }
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('Assignment not found');
+    }
+
+    await this.assignmentRepo.remove(assignment);
+
+    return { message: 'Assignment deleted successfully' };
+  }
+
 }

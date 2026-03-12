@@ -23,6 +23,7 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { ServiceType } from '../common/enums/service-type.enum';
 import type { RequestWithUser } from 'src/auth/auth.controller';
 import { ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { SearchVendorDto } from './dto/search-vendor.dto';
 @ApiBearerAuth()
 @Controller('vendors')
 @UseGuards(JwtAuthGuard,RolesGuard)
@@ -63,15 +64,12 @@ export class VendorsController {
   // ---------------- Vendor Search ----------------
   @Get('search')
   @Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER)
-  @ApiQuery({ name: 'service_type', required: false, enum: ServiceType })
-@ApiQuery({ name: 'area', required: false, type: String })
-@ApiQuery({ name: 'date', required: false, type: String })
-  search(
-    @Query('service_type') serviceType?: ServiceType,
-    @Query('area') area?: string,
-    @Query('date') date?: string,
-  ) {
-    return this.vendorsService.searchVendors(serviceType, area, date);
+  search(@Query() query: SearchVendorDto) {
+    return this.vendorsService.searchVendors(
+      query.service_type,
+      query.area,
+      query.date,
+    );
   }
 
   // ---------------- Availability Tracking ----------------
