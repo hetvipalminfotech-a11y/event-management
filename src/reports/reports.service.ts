@@ -11,7 +11,7 @@ async monthlyEventSummary(year:number,month:number){
 const sql = `WITH monthly_events AS (
     SELECT *
     FROM event_bookings
-    WHERE YEAR(event_date) = 2025
+    WHERE YEAR(event_date) = 2026
     AND MONTH(event_date) = 1
 ),
 

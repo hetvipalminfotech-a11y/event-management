@@ -10,6 +10,7 @@ import {
   UseGuards,
   ParseIntPipe,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { VendorsService } from './vendors.service';
 import { CreateVendorDto } from './dto/create-vendor.dto';
@@ -24,11 +25,16 @@ import { ServiceType } from '../common/enums/service-type.enum';
 import type { RequestWithUser } from 'src/auth/auth.controller';
 import { ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { SearchVendorDto } from './dto/search-vendor.dto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Vendor } from './entities/vendor.entity';
 @ApiBearerAuth()
 @Controller('vendors')
 @UseGuards(JwtAuthGuard,RolesGuard)
 export class VendorsController {
-  constructor(private readonly vendorsService: VendorsService) {}
+  constructor(
+   @InjectRepository(Vendor) private readonly vendorRepo: Repository<Vendor>,
+    private readonly vendorsService: VendorsService) {}
 
   // ---------------- Vendor CRUD ----------------
   @Post()
@@ -62,15 +68,15 @@ export class VendorsController {
   }
 
   // ---------------- Vendor Search ----------------
-  @Get('search')
-  @Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER)
-  search(@Query() query: SearchVendorDto) {
-    return this.vendorsService.searchVendors(
-      query.service_type,
-      query.area,
-      query.date,
-    );
-  }
+ @Get('search')
+@Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER)
+search(@Query() query: SearchVendorDto) {
+  return this.vendorsService.searchVendors(
+    query.service_type,
+    query.area,
+    query.date,
+  );
+}
 
   // ---------------- Availability Tracking ----------------
   @Post('availability')
@@ -103,19 +109,26 @@ export class VendorsController {
 
   // ---------------- Vendor Assigned Events ----------------
   // Only vendor can see their own assignments
-  @Get(':vendor_id/assignments')
-  @Roles(UserRole.VENDOR)
-  getVendorAssignments(
-    @Param('vendor_id') vendorId: string,
-    @Req() req: RequestWithUser,
-  ) {
-    // Convert route param to number for comparison
-    const vendorIdNum = Number(vendorId);
+ @Get(':vendor_id/assignments')
+@Roles(UserRole.VENDOR)
+async getVendorAssignments(
+  @Param('vendor_id') vendorId: string,
+  @Req() req: RequestWithUser,
+) {
+  // Load vendor including the user reference
+  const vendor = await this.vendorRepo.findOne({
+    where: { vendor_id: vendorId },
+    relations: ['user'], // load the owner user
+  });
 
-    if (req.user.role !== UserRole.VENDOR || req.user.id !== vendorIdNum) {
-      throw new BadRequestException('You can only view your own assignments');
-    }
+  if (!vendor) throw new NotFoundException('Vendor not found');
 
-    return this.vendorsService.getVendorAssignments(vendorId);
+  // Check if logged-in vendor user matches this vendor's owner
+  if (req.user.role !== UserRole.VENDOR || req.user.id !== vendor.user.id) {
+    throw new BadRequestException('You can only view your own assignments');
   }
+
+  // Return the assignments
+  return this.vendorsService.getVendorAssignments(vendorId);
+}
 }

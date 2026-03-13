@@ -111,12 +111,16 @@ export class EventBookingsService {
 
       for (const vendor of vendors) {
 
-        const availability = await this.vendoravailableRepo.findOne({
-          where: {
-            vendor: { vendor_id: vendor.vendor_id },
-            date: new Date(dto.event_date),
-          },
-        });
+      const availability = await queryRunner.manager
+  .getRepository(VendorAvailability)
+  .createQueryBuilder('availability')
+  .leftJoinAndSelect('availability.vendor', 'vendor')
+  .setLock('pessimistic_write')
+  .where('vendor.vendor_id = :vendorId', { vendorId: vendor.vendor_id })
+  .andWhere('DATE(availability.date) = :eventDate', {
+    eventDate: dto.event_date,
+  })
+  .getOne();
 
         if (!availability || availability.available_slots <= 0) {
           unavailable.push(vendor.vendor_name);
@@ -173,12 +177,15 @@ export class EventBookingsService {
       }
 
       // reduce availability
-      for (const availability of availabilities) {
+    for (const availability of availabilities) {
 
-        availability.available_slots -= 1;
+  availability.available_slots -= 1;
 
-        await queryRunner.manager.save(availability);
-      }
+  availability.booked_count =
+    availability.maximum_capacity - availability.available_slots;
+
+  await queryRunner.manager.save(availability);
+}
 
       await queryRunner.commitTransaction();
 
@@ -219,61 +226,119 @@ export class EventBookingsService {
   }
 
   // CANCEL BOOKING
-  async cancelBooking(id: string, dto: CancelBookingDto) {
+ async cancelBooking(id: string) {
 
-    const queryRunner = this.dataSource.createQueryRunner();
+  const queryRunner = this.dataSource.createQueryRunner();
 
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+  await queryRunner.connect();
+  await queryRunner.startTransaction();
 
-    try {
+  try {
 
-      const booking = await this.eventbookinRepo.findOne({
-        where: { booking_id: id },
-        relations: ['vendor_assignments', 'vendor_assignments.vendor'],
+    const booking = await queryRunner.manager.findOne(EventBooking, {
+      where: { booking_id: id },
+      relations: ['vendor_assignments', 'vendor_assignments.vendor'],
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    // restore vendor slots + cancel assignments
+    for (const assignment of booking.vendor_assignments) {
+
+      const availability = await queryRunner.manager.findOne(VendorAvailability, {
+        where: {
+          vendor: { vendor_id: assignment.vendor.vendor_id },
+          date: booking.event_date,
+        },
       });
 
-      if (!booking) {
-        throw new NotFoundException('Booking not found');
+      if (availability) {
+        availability.available_slots += 1;
+        await queryRunner.manager.save(availability);
       }
 
-      for (const assignment of booking.vendor_assignments) {
-
-        const availability = await this.vendoravailableRepo.findOne({
-          where: {
-            vendor: { vendor_id: assignment.vendor.vendor_id },
-            date: booking.event_date,
-          },
-        });
-
-        if (availability) {
-          availability.available_slots += 1;
-          await queryRunner.manager.save(availability);
-        }
-
-        assignment.delivery_status = DeliveryStatus.CANCELLED;
-
-        await queryRunner.manager.save(assignment);
-      }
-
-      booking.event_status = dto.event_status;
-
-      await queryRunner.manager.save(booking);
-
-      await queryRunner.commitTransaction();
-
-      return booking;
-
-    } catch (error) {
-
-      await queryRunner.rollbackTransaction();
-      throw error;
-
-    } finally {
-
-      await queryRunner.release();
-
+      assignment.delivery_status = DeliveryStatus.CANCELLED;
+      await queryRunner.manager.save(assignment);
     }
+
+    // only cancel event (NOT delete)
+    booking.event_status = EventStatus.CANCELLED;
+
+    await queryRunner.manager.save(booking);
+
+    await queryRunner.commitTransaction();
+
+    return { message: 'Event cancelled successfully' };
+
+  } catch (error) {
+
+    await queryRunner.rollbackTransaction();
+    throw error;
+
+  } finally {
+
+    await queryRunner.release();
+
+  }
+}
+async softDeleteBooking(id: string) {
+
+  const booking = await this.eventbookinRepo.findOne({
+    where: { booking_id: id }
+  });
+
+  if (!booking) {
+    throw new NotFoundException('Booking not found');
   }
 
+  booking.status = false; // or 0
+  booking.deleted_at = new Date();
+  await this.eventbookinRepo.save(booking);
+
+  return { message: 'Booking deleted successfully' };
+}
+async updateEventStatus(id: string, status: EventStatus) {
+
+  const booking = await this.eventbookinRepo.findOne({
+    where: { booking_id: id },
+    relations: ['vendor_assignments']
+  });
+
+  if (!booking) {
+    throw new NotFoundException('Booking not found');
+  }
+
+  // prevent updating deleted bookings
+  if (!booking.status) {
+    throw new ConflictException('Booking is deleted');
+  }
+
+  // prevent update if already cancelled
+  if (booking.event_status === EventStatus.CANCELLED) {
+    throw new ConflictException('Cancelled event cannot be updated');
+  }
+
+  // prevent updating completed event
+  if (booking.event_status === EventStatus.COMPLETED) {
+    throw new ConflictException('Event already completed');
+  }
+
+  // only allow BOOKED -> COMPLETED
+  if (
+    booking.event_status === EventStatus.BOOKED &&
+    status === EventStatus.COMPLETED
+  ) {
+    booking.event_status = EventStatus.COMPLETED;
+  } else {
+    throw new ConflictException('Invalid event status transition');
+  }
+
+  await this.eventbookinRepo.save(booking);
+
+  return {
+    message: `Event marked as ${status}`,
+  };
+}
 }

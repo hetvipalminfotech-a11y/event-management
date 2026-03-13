@@ -44,76 +44,71 @@ async function seed() {
     process.exit();
   }
 
-  const password = await bcrypt.hash('password123', 10);
+  // users
+const password = await bcrypt.hash('password123', 10);
 
-  /*
-  USERS
-  */
+const admin = userRepo.create({
+  name: 'Admin',
+  email: 'admin@test.com',
+  password,
+  role: UserRole.ADMIN,
+});
 
-  const admin = userRepo.create({
-    name: 'Admin',
-    email: 'admin@test.com',
-    password,
-    role: UserRole.ADMIN,
-  });
+const manager = userRepo.create({
+  name: 'Event Manager',
+  email: 'manager@test.com',
+  password,
+  role: UserRole.EVENT_MANAGER,
+});
 
-  const manager = userRepo.create({
-    name: 'Event Manager',
-    email: 'manager@test.com',
-    password,
-    role: UserRole.EVENT_MANAGER,
-  });
+await userRepo.save([admin, manager]);
 
-  const vendorUser = userRepo.create({
-    name: 'Vendor User',
-    email: 'vendor@test.com',
+// create separate vendor users
+const vendorUsers: User[] = [];
+for (let i = 1; i <= 10; i++) {
+  const user = userRepo.create({
+    name: `Vendor User ${i}`,
+    email: `vendor${i}@test.com`,
     password,
     role: UserRole.VENDOR,
   });
+  vendorUsers.push(user);
+}
 
-  await userRepo.save([admin, manager, vendorUser]);
+await userRepo.save(vendorUsers);
 
-  /*
-  VENDORS
-  */
+// vendors table: link each vendor to its own user
+const serviceTypes = [
+  ServiceType.CATERING,
+  ServiceType.DECORATION,
+  ServiceType.PHOTOGRAPHY,
+  ServiceType.DJ,
+  ServiceType.MAKEUP,
+  ServiceType.VENUE,
+];
+const year = new Date().getFullYear();
+const vendors: Vendor[] = [];
 
-  const serviceTypes = [
-    ServiceType.CATERING,
-    ServiceType.DECORATION,
-    ServiceType.PHOTOGRAPHY,
-    ServiceType.DJ,
-    ServiceType.MAKEUP,
-    ServiceType.VENUE,
-  ];
-  const year = new Date().getFullYear();
-  const vendors: Vendor[] = [];
+for (let i = 0; i < 10; i++) {
+  const vendorId = `VEN-${year}-${String(i + 1).padStart(3, '0')}`;
+  const vendor = vendorRepo.create({
+    vendor_id: vendorId,
+    vendor_name: `Vendor ${i + 1}`,
+    business_name: `Business ${i + 1}`,
+    contact_number: `987654321${i + 1}`,
+    service_area: 'Surat',
+    service_type: serviceTypes[i % serviceTypes.length],
+    vendor_cost: 10000 + (i + 1) * 1000,
+    package_price: 15000 + (i + 1) * 1500,
+    max_events_per_day: 3,
+    rating: 4.5,
+    vendor_status: VendorStatus.ACTIVE,
+    user: vendorUsers[i], // each vendor has its own user
+  });
+  vendors.push(vendor);
+}
 
-  for (let i = 1; i <= 10; i++) {
-    const vendorId = `VEN-${year}-${String(i).padStart(3, '0')}`;
-    const vendor = vendorRepo.create({
-      vendor_id: vendorId,
-      vendor_name: `Vendor ${i}`,
-      business_name: `Business ${i}`,
-      contact_number: `987654321${i}`,
-      service_area: 'Surat',
-
-      service_type: serviceTypes[i % serviceTypes.length],
-
-      vendor_cost: 10000 + i * 1000,
-      package_price: 15000 + i * 1500,
-
-      max_events_per_day: 3,
-      rating: 4.5,
-
-      vendor_status: VendorStatus.ACTIVE,
-      user: vendorUser,
-    });
-
-    vendors.push(vendor);
-  }
-
-  await vendorRepo.save(vendors);
-
+await vendorRepo.save(vendors);
   /*
   AVAILABILITY
   */

@@ -7,6 +7,7 @@ import {
   Patch,
   Req,
   UseGuards,
+  Delete,
 } from '@nestjs/common';
 
 import { EventBookingsService } from './event-bookings.service';
@@ -20,6 +21,10 @@ import { RolesGuard } from 'src/common/guards/role.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { UserRole } from 'src/common/enums/user-role.enum';
 import type { Request } from 'express';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { EventStatus } from 'src/common/enums/event-status';
+import { UpdateEventStatusDto } from './dto/event-status.dto';
+@ApiBearerAuth()
 @Controller('event-bookings')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EventBookingsController {
@@ -50,14 +55,24 @@ export class EventBookingsController {
   findOne(@Param('id') id: string) {
     return this.bookingService.findOne(id);
   }
-
+@Patch(':id/status')
+updateStatus(
+  @Param('id') id: string,
+  @Body() dto: UpdateEventStatusDto,
+) {
+  return this.bookingService.updateEventStatus(id, dto.status);
+}
   // CANCEL BOOKING
   @Patch(':id/cancel')
-  @Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER)
-  cancel(
-    @Param('id') id: string,
-    @Body() dto: CancelBookingDto,
-  ) {
-    return this.bookingService.cancelBooking(id, dto);
-  }
+@Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER)
+cancelBooking(
+  @Param('id') id: string
+) {
+  return this.bookingService.cancelBooking(id);
+}
+@Patch(':id/delete')
+@Roles(UserRole.ADMIN)
+softDeleteBooking(@Param('id') id: string) {
+  return this.bookingService.softDeleteBooking(id);
+}
 }

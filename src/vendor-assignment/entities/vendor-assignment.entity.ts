@@ -5,7 +5,8 @@ import {
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
-  UpdateDateColumn
+  UpdateDateColumn,
+  DeleteDateColumn
 } from 'typeorm';
 
 import { Vendor } from '../../vendors/entities/vendor.entity';
@@ -56,4 +57,7 @@ export class VendorAssignment  {
   
     @UpdateDateColumn()
       updated_at!: Date;
+
+    @DeleteDateColumn()
+    deleted_at?: Date;
 }

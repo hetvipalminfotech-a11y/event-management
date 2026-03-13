@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
@@ -14,6 +14,9 @@ import { RolesGuard } from './common/guards/role.guard';
 import { ReportsModule } from './reports/reports.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TasksModule } from './task/task.module';
+import { AuditModule } from './audit/audit.module';
+import { RequestContextMiddleware } from './audit/context/request-context.middleware';
+import { AuditSubscriber } from './audit/subscribers/audit.subscriber';
 
 @Module({
   imports: [
@@ -23,9 +26,15 @@ import { TasksModule } from './task/task.module';
     ScheduleModule.forRoot(),
     TasksModule,
     TypeOrmModule.forRootAsync(databaseConfig),
-    UsersModule, VendorsModule, EventBookingsModule, VendorAssignmentModule, AuthModule, ReportsModule],
+    UsersModule, VendorsModule, EventBookingsModule, VendorAssignmentModule, AuthModule, ReportsModule, AuditModule],
   
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, AuditSubscriber],
 })
-export class AppModule {}
+export class AppModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(RequestContextMiddleware)
+      .forRoutes('*');
+  }
+}

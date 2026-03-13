@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryColumn, ManyToOne, JoinColumn, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryColumn, ManyToOne, JoinColumn, OneToMany, CreateDateColumn, UpdateDateColumn, DeleteDateColumn } from 'typeorm';
 import { EventType } from 'src/common/enums/event-type.enum';
 import { EventStatus } from 'src/common/enums/event-status';
 import { User } from 'src/users/entities/user.entity';
@@ -56,4 +56,7 @@ export class EventBooking  {
   
     @UpdateDateColumn()
       updated_at!: Date;
+
+    @DeleteDateColumn()
+    deleted_at?: Date;
 }

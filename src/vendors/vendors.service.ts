@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Vendor } from './entities/vendor.entity';
@@ -17,64 +21,85 @@ import { VendorAssignment } from 'src/vendor-assignment/entities/vendor-assignme
 export class VendorsService {
   constructor(
     @InjectRepository(Vendor) private readonly vendorRepo: Repository<Vendor>,
-    @InjectRepository(VendorAvailability) private readonly availabilityRepo: Repository<VendorAvailability>,
+    @InjectRepository(VendorAvailability)
+    private readonly availabilityRepo: Repository<VendorAvailability>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
-    @InjectRepository(VendorAssignment) private readonly assignmentRepo: Repository<VendorAssignment>,
-    
+    @InjectRepository(VendorAssignment)
+    private readonly assignmentRepo: Repository<VendorAssignment>,
+
     private readonly dataSource: DataSource,
   ) {}
 
-async generateVendorId(): Promise<string> {
-  const year = new Date().getFullYear();
+  async generateVendorId(): Promise<string> {
+    const year = new Date().getFullYear();
 
-  const lastVendor = await this.vendorRepo
-    .createQueryBuilder('vendor')
-    .where('vendor.vendor_id LIKE :pattern', {
-      pattern: `VEN-${year}-%`,
-    })
-    .orderBy('vendor.vendor_id', 'DESC')
-    .getOne();
+    const lastVendor = await this.vendorRepo
+      .createQueryBuilder('vendor')
+      .where('vendor.vendor_id LIKE :pattern', {
+        pattern: `VEN-${year}-%`,
+      })
+      .orderBy('vendor.vendor_id', 'DESC')
+      .getOne();
 
-  let nextNumber = 1;
+    let nextNumber = 1;
 
-  if (lastVendor?.vendor_id) {
-    const lastSequence = lastVendor.vendor_id.split('-').pop();
-    const lastNumber = Number(lastSequence);
+    if (lastVendor?.vendor_id) {
+      const lastSequence = lastVendor.vendor_id.split('-').pop();
+      const lastNumber = Number(lastSequence);
 
-    if (!isNaN(lastNumber)) {
-      nextNumber = lastNumber + 1;
+      if (!isNaN(lastNumber)) {
+        nextNumber = lastNumber + 1;
+      }
     }
+
+    const formatted = String(nextNumber).padStart(3, '0');
+
+    return `VEN-${year}-${formatted}`;
   }
-
-  const formatted = String(nextNumber).padStart(3, '0');
-
-  return `VEN-${year}-${formatted}`;
-}
 
   // ---------------- Vendor CRUD ----------------
   async createVendor(dto: CreateVendorDto, userId: number): Promise<Vendor> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    if (dto.package_price <= dto.vendor_cost) throw new BadRequestException('Package price must be greater than vendor cost');
+    if (dto.package_price <= dto.vendor_cost)
+      throw new BadRequestException(
+        'Package price must be greater than vendor cost',
+      );
 
-    const vendor = this.vendorRepo.create({ ...dto, vendor_id: await this.generateVendorId(), user });
+    const vendor = this.vendorRepo.create({
+      ...dto,
+      vendor_id: await this.generateVendorId(),
+      user,
+    });
     return this.vendorRepo.save(vendor);
   }
 
   async findAll(): Promise<Vendor[]> {
-    return this.vendorRepo.find({ relations: ['user'], order: { created_at: 'DESC' } });
+    return this.vendorRepo.find({
+      relations: ['user'],
+      order: { created_at: 'DESC' },
+    });
   }
 
   async findOne(vendorId: string): Promise<Vendor> {
-    const vendor = await this.vendorRepo.findOne({ where: { vendor_id: vendorId }, relations: ['user', 'vendorAvailabilities'] });
+    const vendor = await this.vendorRepo.findOne({
+      where: { vendor_id: vendorId },
+      relations: ['user', 'vendorAvailabilities'],
+    });
     if (!vendor) throw new NotFoundException('Vendor not found');
     return vendor;
   }
 
   async updateVendor(vendorId: string, dto: UpdateVendorDto): Promise<Vendor> {
     const vendor = await this.findOne(vendorId);
-    if (dto.package_price && dto.vendor_cost && dto.package_price <= dto.vendor_cost)
-      throw new BadRequestException('Package price must be greater than vendor cost');
+    if (
+      dto.package_price &&
+      dto.vendor_cost &&
+      dto.package_price <= dto.vendor_cost
+    )
+      throw new BadRequestException(
+        'Package price must be greater than vendor cost',
+      );
 
     Object.assign(vendor, dto);
     return this.vendorRepo.save(vendor);
@@ -88,27 +113,51 @@ async generateVendorId(): Promise<string> {
 
   // ---------------- Improved Vendor Search ----------------
   async searchVendors(
-    serviceType?: ServiceType,
+    serviceType?: string,
     area?: string,
     date?: string,
   ): Promise<Vendor[]> {
-    const query = this.vendorRepo
-      .createQueryBuilder('vendor')
-      .leftJoinAndSelect('vendor.vendorAvailabilities', 'availability');
+    const query = this.vendorRepo.createQueryBuilder('vendor');
 
-    if (serviceType) query.andWhere('vendor.service_type = :serviceType', { serviceType });
-    if (area) query.andWhere('vendor.service_area LIKE :area', { area: `%${area}%` });
-    if (date) query.andWhere('availability.date = :date AND availability.available_slots > 0', { date });
+    if (serviceType) {
+      query.andWhere('vendor.service_type = :serviceType', { serviceType });
+    }
 
-    //query.andWhere('vendor.vendor_status = :status', { status: VendorStatus.ACTIVE });
-    query.leftJoinAndSelect('vendor.vendorAvailabilities', 'availability');
+    if (area) {
+      query.andWhere('LOWER(vendor.service_area) LIKE LOWER(:area)', {
+        area: `%${area}%`,
+      });
+    }
 
-    return query.getMany();
+    query.andWhere('vendor.vendor_status = :status', {
+      status: VendorStatus.ACTIVE,
+    });
+
+    if (date) {
+      query
+        .leftJoinAndSelect('vendor.vendorAvailabilities', 'availability')
+        .andWhere(
+          'DATE(availability.date) = :date AND availability.available_slots > 0',
+          { date },
+        );
+    } else {
+      query.leftJoinAndSelect('vendor.vendorAvailabilities', 'availability');
+    }
+
+    const vendors = await query.getMany();
+    if (!vendors.length) {
+      throw new NotFoundException('Vendor not found');
+    }
+
+    return vendors;
   }
-
   // ---------------- Availability Tracking ----------------
-  async createAvailability(dto: CreateVendorAvailabilityDto): Promise<VendorAvailability> {
-    const vendor = await this.vendorRepo.findOne({ where: { vendor_id: String(dto.vendor_id) } });
+  async createAvailability(
+    dto: CreateVendorAvailabilityDto,
+  ): Promise<VendorAvailability> {
+    const vendor = await this.vendorRepo.findOne({
+      where: { vendor_id: String(dto.vendor_id) },
+    });
     if (!vendor) throw new NotFoundException('Vendor not found');
 
     const availability = this.availabilityRepo.create({
@@ -123,8 +172,11 @@ async generateVendorId(): Promise<string> {
     return this.availabilityRepo.save(availability);
   }
 
-  async updateAvailability(id: number, dto: UpdateVendorAvailabilityDto): Promise<VendorAvailability> {
-    return await this.dataSource.transaction(async manager => {
+  async updateAvailability(
+    id: number,
+    dto: UpdateVendorAvailabilityDto,
+  ): Promise<VendorAvailability> {
+    return await this.dataSource.transaction(async (manager) => {
       const availability = await manager
         .getRepository(VendorAvailability)
         .createQueryBuilder('va')
@@ -135,6 +187,8 @@ async generateVendorId(): Promise<string> {
       if (!availability) throw new NotFoundException('Availability not found');
 
       availability.available_slots = dto.available_slots;
+      availability.booked_count =
+        availability.maximum_capacity - availability.available_slots;
 
       // Update status based on capacity
       if (availability.available_slots === 0) {
@@ -151,12 +205,18 @@ async generateVendorId(): Promise<string> {
 
   async getAvailability(vendorId: string): Promise<VendorAvailability[]> {
     const vendor = await this.findOne(vendorId);
-    return this.availabilityRepo.find({ where: { vendor }, order: { date: 'ASC' } });
+    return this.availabilityRepo.find({
+      where: { vendor },
+      order: { date: 'ASC' },
+    });
   }
 
   // ---------------- Concurrency-Safe Booking ----------------
-  async bookVendorSlot(vendorId: string, date: string): Promise<VendorAvailability> {
-    return await this.dataSource.transaction(async manager => {
+  async bookVendorSlot(
+    vendorId: string,
+    date: string,
+  ): Promise<VendorAvailability> {
+    return await this.dataSource.transaction(async (manager) => {
       const availability = await manager
         .getRepository(VendorAvailability)
         .createQueryBuilder('va')
@@ -165,8 +225,10 @@ async generateVendorId(): Promise<string> {
         .andWhere('va.date = :date', { date })
         .getOne();
 
-      if (!availability) throw new NotFoundException('Vendor not available on this date');
-      if (availability.available_slots <= 0) throw new BadRequestException('No slots available');
+      if (!availability)
+        throw new NotFoundException('Vendor not available on this date');
+      if (availability.available_slots <= 0)
+        throw new BadRequestException('No slots available');
 
       availability.booked_count += 1;
       availability.available_slots -= 1;
@@ -184,14 +246,24 @@ async generateVendorId(): Promise<string> {
     });
   }
   // ---------------- Vendor Assigned Events ----------------
-  async getVendorAssignments(vendorId: string) {
-    const vendor = await this.vendorRepo.findOne({ where: { vendor_id: vendorId } });
+  // vendors.service.ts
+  async getVendorAssignments(vendorId: string): Promise<VendorAssignment[]> {
+    // Find the vendor by vendor_id
+    const vendor = await this.vendorRepo.findOne({
+      where: { vendor_id: vendorId },
+    });
     if (!vendor) throw new NotFoundException('Vendor not found');
 
-    return this.assignmentRepo.find({
-      where: { vendor },
-      relations: ['event'], // assuming your VendorAssignment has a relation to Event entity
+    // Fetch all assignments for this vendor using vendor.id (primary key)
+    const assignments = await this.assignmentRepo.find({
+      where: { vendor: { vendor_id: vendor.vendor_id } }, // use PK
+      relations: ['event_booking'], // load event data
       order: { created_at: 'DESC' },
     });
+
+    if (!assignments.length)
+      throw new NotFoundException('No assignments found for this vendor');
+
+    return assignments;
   }
 }

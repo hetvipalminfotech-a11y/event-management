@@ -5,7 +5,9 @@ import { UserRole } from 'src/common/enums/user-role.enum';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { RolesGuard } from 'src/common/guards/role.guard';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { UpdateUserDto } from './dto/update-user.dto';
+@ApiBearerAuth()
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
@@ -29,13 +31,14 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
+
   @Patch(':id')
   @Roles(UserRole.ADMIN)
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: Partial<{ name: string; role: UserRole; status: boolean }>
+    @Body() dto: UpdateUserDto,
   ) {
-    return this.usersService.update(id, body);
+    return this.usersService.update(id, dto);
   }
 
   @Delete(':id')

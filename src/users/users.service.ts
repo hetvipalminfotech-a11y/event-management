@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UserRole } from 'src/common/enums/user-role.enum';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
@@ -46,23 +47,30 @@ export class UsersService {
   }
 
   // UPDATE USER ROLE OR STATUS
-  async update(id: number, data: Partial<{ name: string; role: UserRole; status: boolean }>): Promise<User> {
-    const user = await this.userRepo.findOne({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
+ async update(id: number, dto: UpdateUserDto): Promise<User> {
 
-    if (data.name !== undefined) user.name = data.name;
-    if (data.role !== undefined) user.role = data.role;
-    if (data.status !== undefined) user.status = data.status;
+  const user = await this.userRepo.findOne({ where: { id } });
 
-    return this.userRepo.save(user);
+  if (!user) {
+    throw new NotFoundException('User not found');
   }
+
+  Object.assign(user, dto);
+
+  return this.userRepo.save(user);
+}
 
   // DELETE USER
   async remove(id: number): Promise<{ message: string }> {
-    const user = await this.userRepo.findOne({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
 
-    await this.userRepo.remove(user);
-    return { message: 'User deleted successfully' };
-  }
+  const user = await this.userRepo.findOne({ where: { id } });
+
+  if (!user) throw new NotFoundException('User not found');
+
+  user.status = false;
+
+  await this.userRepo.save(user);
+
+  return { message: 'User deactivated successfully' };
+}
 }

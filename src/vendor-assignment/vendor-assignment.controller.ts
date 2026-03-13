@@ -7,7 +7,8 @@ import {
   Req,
   Body,
   ParseIntPipe,
-  UseGuards
+  UseGuards,
+  NotFoundException,
 } from '@nestjs/common';
 
 import { VendorAssignmentsService } from './vendor-assignment.service';
@@ -21,105 +22,94 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
 
 import type { Request } from 'express';
-
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { Vendor } from 'src/vendors/entities/vendor.entity';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+@ApiBearerAuth()
 @Controller('vendor-assignments')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class VendorAssignmentsController {
-
   constructor(
-    private readonly assignmentService: VendorAssignmentsService
+    @InjectRepository(Vendor)
+    private readonly vendorRepo: Repository<Vendor>,
+    private readonly assignmentService: VendorAssignmentsService,
   ) {}
 
   // Vendor view their events
   @Get('my-events')
   @Roles(UserRole.VENDOR)
-  getMyEvents(@Req() req: Request) {
+  async getMyEvents(@Req() req: Request) {
+    const userId = (req.user as any).id;
 
-    const vendorId = (req.user as { vendor_id: string }).vendor_id;
+    const vendor = await this.vendorRepo.findOne({
+      where: { user: { id: userId } },
+    });
 
-    return this.assignmentService.getVendorAssignments(vendorId);
+    if (!vendor) {
+      throw new NotFoundException('Vendor profile not found');
+    }
+
+    return this.assignmentService.getVendorAssignments(vendor.vendor_id);
   }
-
 
   // Vendor update delivery status
   @Patch(':id/delivery-status')
   @Roles(UserRole.VENDOR)
-  updateDeliveryStatus(
-
+  async updateDeliveryStatus(
     @Req() req: Request,
-
-    @Param('id', ParseIntPipe)
-    id: number,
-
-    @Body()
-    dto: UpdateDeliveryStatusDto
-
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateDeliveryStatusDto,
   ) {
+    const userId = (req.user as any).id;
 
-    const vendorId = (req.user as { vendor_id: string }).vendor_id;
+    const vendor = await this.vendorRepo.findOne({
+      where: { user: { id: userId } },
+    });
+
+    if (!vendor) {
+      throw new NotFoundException('Vendor profile not found');
+    }
 
     return this.assignmentService.updateDeliveryStatus(
-      vendorId,
+      vendor.vendor_id,
       id,
-      dto.delivery_status
+      dto.delivery_status,
     );
   }
-
 
   // Event Manager view event assignments
   @Get('event/:bookingId')
   @Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER)
-  getAssignmentsByEvent(
-    @Param('bookingId') bookingId: string
-  ) {
-
-    return this.assignmentService.getAssignmentsByEvent(
-      bookingId
-    );
+  getAssignmentsByEvent(@Param('bookingId') bookingId: string) {
+    return this.assignmentService.getAssignmentsByEvent(bookingId);
   }
-
 
   // Get single assignment
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER)
-  getAssignment(
-    @Param('id', ParseIntPipe) id: number
-  ) {
-
+  getAssignment(@Param('id', ParseIntPipe) id: number) {
     return this.assignmentService.getAssignmentById(id);
   }
-
 
   // Cancel assignment
   @Patch(':id/cancel')
   @Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER)
-  cancelAssignment(
-    @Param('id', ParseIntPipe) id: number
-  ) {
-
+  cancelAssignment(@Param('id', ParseIntPipe) id: number) {
     return this.assignmentService.cancelAssignment(id);
   }
-
 
   // Complete event
   @Patch('event/:bookingId/complete')
   @Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER)
-  completeEvent(
-    @Param('bookingId') bookingId: string
-  ) {
-
+  completeEvent(@Param('bookingId') bookingId: string) {
     return this.assignmentService.completeEvent(bookingId);
   }
-
 
   // Delete assignment
   @Delete(':id')
   @Roles(UserRole.ADMIN)
-  deleteAssignment(
-    @Param('id', ParseIntPipe) id: number
-  ) {
-
+  deleteAssignment(@Param('id', ParseIntPipe) id: number) {
     return this.assignmentService.deleteAssignment(id);
   }
-
 }
