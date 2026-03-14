@@ -16,6 +16,7 @@ import { VendorStatus } from '../common/enums/vendor-status.enum';
 import { AvailabilityStatus } from '../common/enums/availability-status.enum';
 import { ServiceType } from 'src/common/enums/service-type.enum';
 import { VendorAssignment } from 'src/vendor-assignment/entities/vendor-assignment.entity';
+import { SearchVendorDto } from './dto/search-vendor.dto';
 
 @Injectable()
 export class VendorsService {
@@ -112,45 +113,35 @@ export class VendorsService {
   }
 
   // ---------------- Improved Vendor Search ----------------
-  async searchVendors(
-    serviceType?: string,
-    area?: string,
-    date?: string,
-  ): Promise<Vendor[]> {
-    const query = this.vendorRepo.createQueryBuilder('vendor');
+ async searchVendors(query: SearchVendorDto) {
 
-    if (serviceType) {
-      query.andWhere('vendor.service_type = :serviceType', { serviceType });
-    }
-
-    if (area) {
-      query.andWhere('LOWER(vendor.service_area) LIKE LOWER(:area)', {
-        area: `%${area}%`,
-      });
-    }
-
-    query.andWhere('vendor.vendor_status = :status', {
-      status: VendorStatus.ACTIVE,
-    });
-
-    if (date) {
-      query
-        .leftJoinAndSelect('vendor.vendorAvailabilities', 'availability')
-        .andWhere(
-          'DATE(availability.date) = :date AND availability.available_slots > 0',
-          { date },
-        );
-    } else {
-      query.leftJoinAndSelect('vendor.vendorAvailabilities', 'availability');
-    }
-
-    const vendors = await query.getMany();
-    if (!vendors.length) {
-      throw new NotFoundException('Vendor not found');
-    }
-
-    return vendors;
+  const { ServiceType, date, service_area } = query;
+  console.log(query,"query");
+  
+  const qb = this.vendorRepo
+    .createQueryBuilder('vendor')
+    .leftJoin('vendor.vendorAvailabilities', 'availability')
+    .where('vendor.vendor_status = :status', { status: 'ACTIVE' });
+  console.log(qb.getSql(),"getsql");
+  
+  if (ServiceType) {
+    qb.andWhere('vendor.service_type = :serviceType', { serviceType: ServiceType, });
   }
+
+  if (service_area) {
+    qb.andWhere('vendor.service_area = :area', { area: service_area, });
+  }
+
+  if (date) {
+    qb.andWhere('availability.date = :date', { date });
+    qb.andWhere('availability.available_slots > 0');
+    qb.andWhere('availability.availability_status = :availability', {
+      availability: 'AVAILABLE',
+    });
+  }
+
+  return qb.getMany();
+}
   // ---------------- Availability Tracking ----------------
   async createAvailability(
     dto: CreateVendorAvailabilityDto,

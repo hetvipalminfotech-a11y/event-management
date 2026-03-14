@@ -15,6 +15,6 @@ export const databaseConfig: TypeOrmModuleAsyncOptions = {
         database: ConfigService.get<string>('DB_NAME'),
         autoLoadEntities: true,
         synchronize: true,
-        logging: true,
+        logging: false,
     }),
 };

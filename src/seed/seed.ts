@@ -95,7 +95,7 @@ for (let i = 0; i < 10; i++) {
     vendor_id: vendorId,
     vendor_name: `Vendor ${i + 1}`,
     business_name: `Business ${i + 1}`,
-    contact_number: `987654321${i + 1}`,
+    contact_number: `98765432${String(i + 10).padStart(2,'0')}`,
     service_area: 'Surat',
     service_type: serviceTypes[i % serviceTypes.length],
     vendor_cost: 10000 + (i + 1) * 1000,
@@ -145,7 +145,7 @@ await vendorRepo.save(vendors);
   ];
   // const year = new Date().getFullYear();
   const bookings: EventBooking[] = [];
-
+  const eventStatusValues = Object.values(EventStatus);
   for (let i = 1; i <= 15; i++) {
     const bookingId = `EVENT-${year}-${String(i).padStart(3, '0')}`;
     const booking = bookingRepo.create({
@@ -162,8 +162,8 @@ await vendorRepo.save(vendors);
 
       total_cost: 0,
       total_package: 0,
-
-      event_status: EventStatus.BOOKED,
+    
+      event_status: eventStatusValues[i % eventStatusValues.length],
 
       created_by: manager,
     });
@@ -177,39 +177,55 @@ await vendorRepo.save(vendors);
   ASSIGNMENTS
   */
 
-  const assignments: VendorAssignment[] = [];
+    const assignments: VendorAssignment[] = [];
+    const assignmentStatusValues = Object.values(AssignmentStatus);
+    for (let i = 0; i < 30; i++) {
+      const booking = bookings[i % bookings.length];
+      const vendor = vendors[i % vendors.length];
 
-  for (let i = 0; i < 30; i++) {
-    const booking = bookings[i % bookings.length];
-    const vendor = vendors[i % vendors.length];
+      const assignment = assignmentRepo.create({
+        event_booking: booking,
+        vendor,
 
-    const assignment = assignmentRepo.create({
-      event_booking: booking,
-      vendor,
+        vendor_cost_snapshot: vendor.vendor_cost,
+        package_price_snapshot: vendor.package_price,
 
-      vendor_cost_snapshot: vendor.vendor_cost,
-      package_price_snapshot: vendor.package_price,
+        
+        assignment_status: assignmentStatusValues[i % assignmentStatusValues.length],
 
-      assignment_status: AssignmentStatus.ACTIVE,
+        delivery_status:
+          i % 4 === 0
+            ? DeliveryStatus.PENDING
+            : i % 4 === 1
+              ? DeliveryStatus.ARRANGED
+              : i % 4 === 2
+                ? DeliveryStatus.DELIVERED
+                : DeliveryStatus.DONE,
+      });
 
-      delivery_status:
-        i % 4 === 0
-          ? DeliveryStatus.PENDING
-          : i % 4 === 1
-            ? DeliveryStatus.ARRANGED
-            : i % 4 === 2
-              ? DeliveryStatus.DELIVERED
-              : DeliveryStatus.DONE,
-    });
+      assignments.push(assignment);
+      
+    }
 
-    assignments.push(assignment);
+    await assignmentRepo.save(assignments);
+    await bookingRepo.query(`
+UPDATE event_bookings eb
+SET 
+total_cost = (
+    SELECT COALESCE(SUM(va.vendor_cost_snapshot),0)
+    FROM vendor_assignments va
+    WHERE va.booking_id = eb.booking_id
+),
+total_package = (
+    SELECT COALESCE(SUM(va.package_price_snapshot),0)
+    FROM vendor_assignments va
+    WHERE va.booking_id = eb.booking_id
+)
+WHERE eb.event_status = 'COMPLETED';
+`);
+    console.log('Seed completed successfully');
+
+    process.exit();
   }
-
-  await assignmentRepo.save(assignments);
-
-  console.log('Seed completed successfully');
-
-  process.exit();
-}
 
 seed();

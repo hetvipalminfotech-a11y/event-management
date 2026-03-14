@@ -36,6 +36,15 @@ export class VendorsController {
    @InjectRepository(Vendor) private readonly vendorRepo: Repository<Vendor>,
     private readonly vendorsService: VendorsService) {}
 
+    
+  // ---------------- Vendor Search ----------------
+@Get('search')
+@Roles(UserRole.EVENT_MANAGER)
+searchVendors(@Query() query: SearchVendorDto) {
+  console.log(query,"outside query");
+  return this.vendorsService.searchVendors(query);
+}
+
   // ---------------- Vendor CRUD ----------------
   @Post()
   @Roles(UserRole.ADMIN)
@@ -67,16 +76,6 @@ export class VendorsController {
     return this.vendorsService.deactivateVendor(vendorId);
   }
 
-  // ---------------- Vendor Search ----------------
- @Get('search')
-@Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER)
-search(@Query() query: SearchVendorDto) {
-  return this.vendorsService.searchVendors(
-    query.service_type,
-    query.area,
-    query.date,
-  );
-}
 
   // ---------------- Availability Tracking ----------------
   @Post('availability')

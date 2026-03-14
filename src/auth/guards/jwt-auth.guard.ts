@@ -16,9 +16,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     context: ExecutionContext,
   ): TUser {
 
-    console.log('ERROR:', err);
-  console.log('USER:', user);
-  console.log('INFO:', info);
+  //   console.log('ERROR:', err);
+  // console.log('USER:', user);
+  // console.log('INFO:', info);
 
     if (err || !user) {
       throw new UnauthorizedException('Invalid or missing access token');
