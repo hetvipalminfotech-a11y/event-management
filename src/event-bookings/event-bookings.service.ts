@@ -19,6 +19,7 @@ import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { EventStatus } from 'src/common/enums/event-status';
 import { VendorStatus } from 'src/common/enums/vendor-status.enum';
 import { DeliveryStatus } from 'src/common/enums/delivery-status';
+import { AvailabilityStatus } from 'src/common/enums/availability-status.enum';
 
 @Injectable()
 export class EventBookingsService {
@@ -68,6 +69,22 @@ export class EventBookingsService {
     return `EVENT-${year}-${formatted}`;
   }
 
+  updateAvailabilityStatus(availability: VendorAvailability) {
+
+  availability.booked_count =
+    availability.maximum_capacity - availability.available_slots;
+
+  if (availability.available_slots <= 0) {
+    availability.availability_status = AvailabilityStatus.FULLY_BOOKED;
+
+  } else if (availability.available_slots < availability.maximum_capacity) {
+    availability.availability_status = AvailabilityStatus.PARTIALLY_BOOKED;
+
+  } else {
+    availability.availability_status = AvailabilityStatus.AVAILABLE;
+  }
+
+}
   // CREATE BOOKING
   async create(dto: CreateEventBookingDto, userId: number) {
 
@@ -181,8 +198,7 @@ export class EventBookingsService {
 
   availability.available_slots -= 1;
 
-  availability.booked_count =
-    availability.maximum_capacity - availability.available_slots;
+ this.updateAvailabilityStatus(availability);
 
   await queryRunner.manager.save(availability);
 }
@@ -256,10 +272,12 @@ export class EventBookingsService {
 
       if (availability) {
         availability.available_slots += 1;
+        this.updateAvailabilityStatus(availability);
         await queryRunner.manager.save(availability);
       }
 
       assignment.delivery_status = DeliveryStatus.CANCELLED;
+      
       await queryRunner.manager.save(assignment);
     }
 

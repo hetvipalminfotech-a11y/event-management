@@ -174,13 +174,15 @@ export class VendorsService {
         .setLock('pessimistic_write')
         .where('va.id = :id', { id })
         .getOne();
-
+        console.log(availability,"availability");
+        
       if (!availability) throw new NotFoundException('Availability not found');
 
-      availability.available_slots = dto.available_slots;
+      availability.available_slots = Number(dto.available_slots);
       availability.booked_count =
         availability.maximum_capacity - availability.available_slots;
-
+        console.log(availability,"availability after update");
+        
       // Update status based on capacity
       if (availability.available_slots === 0) {
         availability.availability_status = AvailabilityStatus.FULLY_BOOKED;

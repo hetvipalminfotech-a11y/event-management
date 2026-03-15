@@ -107,7 +107,7 @@ export class VendorAssignmentsController {
   }
 
   // Delete assignment
-  @Delete(':id')
+  @Patch(':id/cancel/assignment')
   @Roles(UserRole.ADMIN)
   deleteAssignment(@Param('id', ParseIntPipe) id: number) {
     return this.assignmentService.deleteAssignment(id);
