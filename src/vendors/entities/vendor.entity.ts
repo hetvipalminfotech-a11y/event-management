@@ -64,8 +64,7 @@ export class Vendor{
     })
     assignments!: VendorAssignment[];
 
-     @Column({ default: true })
-        status!: boolean;
+    
     
       @CreateDateColumn()
         created_at!: Date;

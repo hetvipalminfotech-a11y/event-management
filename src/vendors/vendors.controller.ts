@@ -13,6 +13,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { VendorsService } from './vendors.service';
+import { plainToInstance } from 'class-transformer';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { CreateVendorAvailabilityDto } from './dto/create-vendor-availability.dto';
@@ -28,6 +29,7 @@ import { SearchVendorDto } from './dto/search-vendor.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Vendor } from './entities/vendor.entity';
+import { VendorResponseDto } from './dto/vendor-response.dto';
 @ApiBearerAuth()
 @Controller('vendors')
 @UseGuards(JwtAuthGuard,RolesGuard)
@@ -53,15 +55,24 @@ searchVendors(@Query() query: SearchVendorDto) {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER)
-  findAll() {
-    return this.vendorsService.findAll();
+  @Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER, UserRole.VENDOR)
+  async findAll(@Req() req: RequestWithUser){
+    const vendors = await this.vendorsService.findAll();
+
+  const group = req.user.role === UserRole.ADMIN ? 'admin' : undefined;
+
+  return plainToInstance(VendorResponseDto, vendors, { groups: group ? [group] : [] });
   }
 
   @Get(':vendor_id')
-  @Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER, UserRole.VENDOR)
-  findOne(@Param('vendor_id') vendorId: string) {
-    return this.vendorsService.findOne(vendorId);
+  @Roles(UserRole.ADMIN, UserRole.EVENT_MANAGER)
+  async findOne(@Param('vendor_id') vendorId: string, @Req() req: RequestWithUser) {
+    const vendor = await this.vendorsService.findOne(vendorId);
+
+  // Determine serialization group based on role
+  const groups = req.user.role === UserRole.ADMIN ? ['admin'] : [];
+
+  return plainToInstance(VendorResponseDto, vendor, { groups });
   }
 
   @Patch(':vendor_id')

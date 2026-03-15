@@ -197,7 +197,7 @@ export class VendorsService {
   async getAvailability(vendorId: string): Promise<VendorAvailability[]> {
     const vendor = await this.findOne(vendorId);
     return this.availabilityRepo.find({
-      where: { vendor },
+      where: { vendor: {vendor_id:vendorId} },
       order: { date: 'ASC' },
     });
   }
