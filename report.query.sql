@@ -113,124 +113,104 @@ ORDER BY
 
 -- Report 3 Event Type & Season Analysis
 CREATE INDEX idx_event_type_date
-ON event_bookings(event_type, event_date);
+ON event_bookings(event_date, event_type);
 
-CREATE INDEX idx_event_date1
-ON event_bookings(event_date);
+SELECT
+    eb.event_type,
+
+    COUNT(*) AS total_bookings,
+
+    (
+        SELECT MONTH(event_date)
+        FROM event_bookings eb2
+        WHERE eb2.event_type = eb.event_type
+        AND YEAR(eb2.event_date) = YEAR(CURDATE())
+        GROUP BY MONTH(event_date)
+        ORDER BY COUNT(*) DESC
+        LIMIT 1
+    ) AS peak_month,
+
+    ROUND(AVG(eb.guest_count),2) AS avg_guest_count,
+
+    ROUND(AVG(eb.total_package),2) AS avg_package_value,
+
+    SUM(eb.total_package) AS total_revenue
+
+FROM event_bookings eb
+
+WHERE YEAR(eb.event_date) = YEAR(CURDATE())
+
+GROUP BY eb.event_type
+
+ORDER BY total_revenue DESC;
+
+-- Report 4 Vendor Utilisation Report
+
+-- Vendor assignment joins
+-- CREATE INDEX idx_va_vendor 
+-- ON vendor_assignments(vendor_id);
+
+-- CREATE INDEX idx_va_booking 
+-- ON vendor_assignments(booking_id);
+
+-- -- Booking month filter
+-- CREATE INDEX idx_booking_date 
+-- ON event_bookings(event_date);
+
+-- -- Vendor availability filtering
+-- CREATE INDEX idx_vendor_availability_vendor_date
+-- ON vendor_availability(vendor_id, date);
+
+-- -- Composite index for availability
+-- CREATE INDEX idx_vendor_availability_month
+-- ON vendor_availability(date, vendor_id);
 SELECT
     v.vendor_name,
     v.service_type,
 
-    COUNT(va.id) AS total_events_assigned,
+    va.total_capacity,
+    COALESCE(va2.total_bookings,0) AS total_bookings,
 
-    SUM(CASE 
-        WHEN va.assignment_status = 'COMPLETED'
-        THEN 1 ELSE 0
-    END) AS events_completed,
-
-    SUM(CASE 
-        WHEN va.assignment_status IN ('CANCELLED','FAILED')
-        THEN 1 ELSE 0
-    END) AS events_cancelled_or_failed,
+    va.total_capacity - COALESCE(va2.total_bookings,0) AS available_capacity_remaining,
 
     ROUND(
-        SUM(CASE 
-            WHEN va.assignment_status = 'COMPLETED'
-            THEN 1 ELSE 0
-        END) * 100.0 /
-        NULLIF(COUNT(va.id),0)
-    ,2) AS completion_rate_percentage,
-
-    SUM(CASE
-        WHEN va.assignment_status = 'COMPLETED'
-        THEN va.vendor_cost_snapshot
-        ELSE 0
-    END) AS total_earnings
-
-FROM event_bookings eb
-
-JOIN vendor_assignments va
-    ON eb.booking_id = va.booking_id
-
-JOIN vendors v
-    ON va.vendor_id = v.vendor_id
-
-WHERE eb.event_date >= '2026-01-01'
-AND eb.event_date < '2026-02-01'
-
-GROUP BY
-    v.vendor_id,
-    v.vendor_name,
-    v.service_type
-
-ORDER BY completion_rate_percentage DESC;
--- Report 4 Vendor Utilisation Report
-
--- Vendor assignment joins
-CREATE INDEX idx_va_vendor 
-ON vendor_assignments(vendor_id);
-
-CREATE INDEX idx_va_booking 
-ON vendor_assignments(booking_id);
-
--- Booking month filter
-CREATE INDEX idx_booking_date 
-ON event_bookings(event_date);
-
--- Vendor availability filtering
-CREATE INDEX idx_vendor_availability_vendor_date
-ON vendor_availability(vendor_id, date);
-
--- Composite index for availability
-CREATE INDEX idx_vendor_availability_month
-ON vendor_availability(date, vendor_id);
-
-   SELECT
-    v.vendor_name,
-    v.service_type,
-
-    -- total capacity for month
-    SUM(va.maximum_capacity) AS total_capacity,
-
-    -- total bookings
-    COUNT(va2.id) AS total_bookings,
-
-    -- remaining capacity
-    SUM(va.maximum_capacity) - COUNT(va2.id) AS available_capacity_remaining,
-
-    -- utilisation rate
-    ROUND(
-        COUNT(va2.id) * 100 /
-        NULLIF(SUM(va.maximum_capacity),0)
+        COALESCE(va2.total_bookings,0) * 100 /
+        NULLIF(va.total_capacity,0)
     ,2) AS utilisation_rate,
 
-    -- revenue contribution
-    SUM(
-        CASE
-            WHEN va2.assignment_status = 'COMPLETED'
-            THEN va2.vendor_cost_snapshot
-            ELSE 0
-        END
-    ) AS revenue_contribution
+    COALESCE(va2.revenue_contribution,0) AS revenue_contribution
 
 FROM vendors v
 
-LEFT JOIN vendor_availability va
-    ON v.vendor_id = va.vendor_id
-    AND va.date >= '2026-01-01'
-    AND va.date < '2026-01-31'
+LEFT JOIN
+(
+    SELECT
+        vendor_id,
+        SUM(maximum_capacity) AS total_capacity
+    FROM vendor_availability
+    WHERE date >= '2026-01-01'
+      AND date < '2026-02-01'
+    GROUP BY vendor_id
+) va ON v.vendor_id = va.vendor_id
 
-LEFT JOIN vendor_assignments va2
-    ON v.vendor_id = va2.vendor_id
-
-LEFT JOIN event_bookings eb
-    ON va2.booking_id = eb.booking_id
-    AND eb.event_date >= '2026-01-01'
-    AND eb.event_date < '2026-01-31'
-
-GROUP BY
-    v.vendor_id,
-    v.vendor_name,
-    v.service_type
+LEFT JOIN
+(
+    SELECT
+        va.vendor_id,
+        COUNT(va.id) AS total_bookings,
+        SUM(
+            CASE
+                WHEN va.assignment_status='COMPLETED'
+                THEN va.vendor_cost_snapshot
+                ELSE 0
+            END
+        ) AS revenue_contribution
+    FROM vendor_assignments va
+    JOIN event_bookings eb
+        ON va.booking_id = eb.booking_id
+    WHERE eb.event_date >= '2026-01-01'
+      AND eb.event_date < '2026-02-01'
+    GROUP BY va.vendor_id
+) va2 ON v.vendor_id = va2.vendor_id
 
 ORDER BY utilisation_rate DESC;
